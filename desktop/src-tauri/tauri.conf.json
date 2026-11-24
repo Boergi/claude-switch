@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Claude Switch",
+  "version": "0.1.0",
+  "identifier": "dev.boergi.claudeswitch",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{
+      "title": "Claude Switch",
+      "width": 640,
+      "height": 570,
+      "minWidth": 540,
+      "minHeight": 540,
+      "resizable": true
+    }],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data:; object-src 'none'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": ["icons/icon.icns", "icons/icon.png"],
+    "resources": {"resources/cswitch": "cswitch", "../../LICENSE": "CLI-LICENSE"},
+    "macOS": {"minimumSystemVersion": "12.0", "signingIdentity": "-"},
+    "shortDescription": "Claude Desktop für Arbeit und Privat öffnen"
+  }
+}
