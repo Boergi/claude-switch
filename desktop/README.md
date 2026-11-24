@@ -13,6 +13,23 @@ Erst wenn die eigenen Chats sichtbar sind, **Ich bin angemeldet** bestätigen.
 Danach öffnet der jeweilige Button das Profil direkt oder fokussiert sein Fenster.
 Die App prüft dabei keine Desktop-Kontoidentität und liest keine Anmeldetokens.
 
+### Bisheriges Privatprofil weiterverwenden
+
+War dein privates Konto bisher in der normalen Claude-App angemeldet, kannst du deren
+Datenordner direkt weiterverwenden:
+
+1. Das gegebenenfalls neu angelegte private Claude-Fenster mit **Cmd+Q** beenden.
+2. In Switch **Bisheriges Privatprofil verwenden** anklicken.
+3. Im Dialog **Bisheriges Profil verwenden** bestätigen.
+4. Danach **Privat → Claude öffnen** wählen und das Konto kontrollieren.
+
+Die Aktion setzt ausschließlich die Speicherort-Zuordnung des privaten Profils in der
+CLI-Konfiguration auf `system` (Desktop und Code). Chats, Sitzung, Erweiterungen und
+Einstellungen bleiben im normalen Claude-Ordner. Auch der neue isolierte Profilordner
+wird nicht gelöscht oder mit dem alten vermischt. Vorher wird die Switch-Konfiguration
+als `config.toml.before-existing-personal` gesichert. Arbeit bleibt isoliert.
+Diese Übernahme muss vom Benutzer selbst in der App ausgelöst werden.
+
 Der macOS-Login des CLI schließt andere Claude-Fenster. Laufende Aufgaben vorher beenden.
 Zuvor geöffnete, im CLI konfigurierte Profile stellt die Oberfläche nach Abschluss oder
 Abbruch wieder her. Ein normales, nicht im CLI erfasstes Claude-Fenster muss selbst erneut
@@ -22,7 +39,8 @@ angeboten. Ein Abbruch des Dialogs meldet das Konto nicht ab.
 Bestehende Profile `work` und `personal` bleiben erhalten. Fehlende Profile werden mit
 getrennten Datenordnern in `~/.cswitch/profiles/` ergänzt. Die bisherige Konfiguration wird
 vor dem ersten Ergänzen als `config.toml.before-desktop` gesichert. Unbekannte TOML-Schlüssel
-und Kommentare bleiben erhalten. Bei gemeinsamem Desktop-Speicherort stoppt die App mit
+und Kommentare bleiben erhalten. Privat darf den normalen Claude-Speicherort verwenden;
+Arbeit muss getrennt bleiben. Bei identischen Desktop-Speicherorten stoppt die App mit
 einer Fehlermeldung. `CSWITCH_HOME` wird wie beim CLI unterstützt.
 Während der einmaligen Einrichtung die Konfiguration nicht gleichzeitig im CLI bearbeiten:
 das unveränderte CLI kennt die Schreibsperre der Oberfläche nicht.
@@ -70,7 +88,7 @@ nicht notarisierten App verlangt, die geltenden Geräte- und Unternehmensregeln 
 
 ## CLI mit dem Original synchronisieren
 
-Der Fork ergänzt ausschließlich `desktop/`, dieses Prüfprotokoll und den Desktop-Workflow.
+Der Fork ergänzt ausschließlich `desktop/` und den Desktop-Workflow.
 `src/`, `Cargo.toml` und `Cargo.lock` des CLI werden nicht angepasst.
 `desktop/upstream.json` enthält den geprüften CLI-Stand. Beim Bauen wird geprüft,
 dass die CLI-Quellen exakt diesem Commit entsprechen. Das CLI wird aus diesen Quellen

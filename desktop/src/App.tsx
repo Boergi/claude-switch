@@ -3,7 +3,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 
 type ProfileId = 'work' | 'personal';
 type ProfileStatus = { id: ProfileId; running: boolean; initialized: boolean };
-type AppStatus = { installed: boolean; profiles: ProfileStatus[]; login: ProfileId | null };
+type AppStatus = { installed: boolean; profiles: ProfileStatus[]; login: ProfileId | null; can_adopt_personal: boolean };
 
 const profiles = [
   { id: 'work' as const, title: 'Arbeit', description: 'Raum für deine Arbeit.', initial: 'A' },
@@ -20,6 +20,7 @@ export function App() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [selected, setSelected] = useState<ProfileId | null>(null);
+  const [adopting, setAdopting] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
 
@@ -81,6 +82,7 @@ export function App() {
       void action('finish_login', { completed: false }, () => setSelected(null));
     } else {
       setSelected(null);
+      setAdopting(false);
       setError('');
     }
   }
@@ -121,6 +123,13 @@ export function App() {
         })}
       </section>
 
+      {status?.can_adopt_personal && <button className="adopt-button text-button" disabled={busy} onClick={event => {
+        trigger.current = event.currentTarget;
+        setError('');
+        setAdopting(true);
+        setSelected('personal');
+      }}>Bisheriges Privatprofil verwenden</button>}
+
       <div className="feedback" aria-live="polite">
         {!selected && error && <p className="error" role="alert">{error} <button className="text-button" disabled={busy} onClick={() => { setError(''); void refresh(); }}>Erneut versuchen</button></p>}
         {!error && notice && <p>{notice}</p>}
@@ -133,20 +142,21 @@ export function App() {
       <dialog ref={dialog} aria-labelledby="login-title" aria-describedby="login-description" onCancel={event => { event.preventDefault(); closeDialog(); }}>
         <div className="dialog-content">
           <p className="eyebrow">{selectedTitle}</p>
-          <h2 id="login-title">{loginActive ? 'Jetzt in Claude anmelden.' : 'Einmal anmelden. Dann loslegen.'}</h2>
-          <p id="login-description">{loginActive
+          <h2 id="login-title">{adopting ? 'Dein bisheriges Claude behalten.' : loginActive ? 'Jetzt in Claude anmelden.' : 'Einmal anmelden. Dann loslegen.'}</h2>
+          <p id="login-description">{adopting ? '„Privat“ verwendet danach den Datenordner deiner normalen Claude-App. Deine bisherigen Chats, Einstellungen und deine Anmeldung bleiben dort. Es wird nichts verschoben oder gelöscht.' : loginActive
             ? `Melde dich im geöffneten Claude-Fenster mit deinem ${selected === 'work' ? 'Arbeitskonto' : 'privaten Konto'} an. Nutze ein privates Browserfenster, falls dein Browser schon mit einem anderen Konto angemeldet ist.`
             : 'Wir richten zwei getrennte Profile ein. Deine bisherige Claude-Installation und ihre Daten bleiben erhalten.'}</p>
-          <div className="login-note">{loginActive
+          <div className="login-note">{adopting ? 'Beende vorher das neu angelegte private Claude-Fenster mit Cmd+Q. Der neue Profilordner bleibt als Rückfallmöglichkeit erhalten. Wir sichern die Switch-Konfiguration vor dem Wechsel.' : loginActive
             ? 'Wenn du deine Chats in Claude siehst, bestätige unten. Zuvor geöffnete Switch-Profile werden wieder geöffnet.'
             : 'Für die Anmeldung schließt das CLI andere Claude-Fenster vorübergehend. Beende laufende Aufgaben vorher. Normale Claude-Fenster kannst du danach selbst wieder öffnen.'}</div>
           {error && <p className="error" role="alert">{error}</p>}
           <div className="dialog-actions">
             <button className="secondary" disabled={busy} onClick={closeDialog}>{loginActive ? 'Abbrechen' : 'Später'}</button>
             <button className="primary" disabled={busy} onClick={() => {
-              if (loginActive) void action('finish_login', { completed: true }, () => { setSelected(null); setNotice(`${selectedTitle} ist eingerichtet.`); });
+              if (adopting) void action('adopt_personal', {}, () => { setSelected(null); setAdopting(false); setNotice('Dein bisheriges Claude ist jetzt mit „Privat“ verbunden.'); });
+              else if (loginActive) void action('finish_login', { completed: true }, () => { setSelected(null); setNotice(`${selectedTitle} ist eingerichtet.`); });
               else void action('begin_login', { profile: selected });
-            }}>{busy ? 'Einen Moment …' : loginActive ? 'Ich bin angemeldet' : 'Profil zur Anmeldung öffnen'}</button>
+            }}>{busy ? 'Einen Moment …' : adopting ? 'Bisheriges Profil verwenden' : loginActive ? 'Ich bin angemeldet' : 'Profil zur Anmeldung öffnen'}</button>
           </div>
         </div>
       </dialog>

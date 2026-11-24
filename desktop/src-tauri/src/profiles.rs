@@ -135,13 +135,23 @@ pub fn ensure_profiles(home: &Path) -> Result<()> {
     if !changed {
         return Ok(());
     }
+    save_config(home, original.as_deref(), &document, "before-desktop")
+}
+
+fn save_config(
+    home: &Path,
+    original: Option<&str>,
+    document: &DocumentMut,
+    backup_name: &str,
+) -> Result<()> {
+    let path = home.join("config.toml");
     fs::create_dir_all(home)?;
     if let Some(raw) = &original {
         // The upstream CLI does not take our lock; refuse a detected concurrent edit.
         if fs::read_to_string(&path)? != *raw {
             bail!("Die CLI-Einstellungen wurden gerade geändert. Versuche es erneut.");
         }
-        let backup = home.join("config.toml.before-desktop");
+        let backup = home.join(format!("config.toml.{backup_name}"));
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -162,6 +172,56 @@ pub fn ensure_profiles(home: &Path) -> Result<()> {
     atomic_write(&path, document.to_string().as_bytes())
 }
 
+pub fn system_desktop_dir() -> Result<PathBuf> {
+    Ok(dirs::data_dir()
+        .context("Der Claude-Datenordner wurde nicht gefunden.")?
+        .join("Claude"))
+}
+
+pub fn uses_existing_personal(home: &Path) -> Result<bool> {
+    let path = home.join("config.toml");
+    if !path.exists() {
+        return Ok(false);
+    }
+    let document = fs::read_to_string(path)?
+        .trim_start_matches('\u{feff}')
+        .parse::<DocumentMut>()?;
+    Ok(document
+        .get("profiles")
+        .and_then(|p| p.get("personal"))
+        .and_then(|p| p.get("desktop_storage"))
+        .and_then(Item::as_str)
+        == Some("system"))
+}
+
+pub fn adopt_personal(home: &Path, existing: &Path) -> Result<()> {
+    if !existing.join("config.json").is_file() {
+        bail!("Es wurde kein bisheriges Claude-Desktop-Profil gefunden.");
+    }
+    ensure_profiles(home)?;
+    let original = fs::read_to_string(home.join("config.toml"))?;
+    let mut document = original
+        .trim_start_matches('\u{feff}')
+        .parse::<DocumentMut>()?;
+    for (name, profile) in document["profiles"]
+        .as_table()
+        .context("Ungültige Profile.")?
+        .iter()
+    {
+        if name != "personal"
+            && profile.get("desktop_storage").and_then(Item::as_str) == Some("system")
+        {
+            bail!(
+                "Profil '{name}' verwendet bereits das bisherige Claude. Ändere zuerst diese Zuordnung im CLI."
+            );
+        }
+    }
+    document["profiles"]["personal"]["desktop_storage"] = value("system");
+    document["profiles"]["personal"]["code_storage"] = value("system");
+    validate_isolation(&document, home)?;
+    save_config(home, Some(&original), &document, "before-existing-personal")
+}
+
 fn validate_isolation(document: &DocumentMut, home: &Path) -> Result<()> {
     let mut used = BTreeSet::new();
     for id in [ProfileId::Work, ProfileId::Personal] {
@@ -175,9 +235,9 @@ fn validate_isolation(document: &DocumentMut, home: &Path) -> Result<()> {
             .unwrap_or("isolated");
         let path = match storage {
             "isolated" => home.join("profiles").join(id.name()).join("desktop"),
+            "system" if id == ProfileId::Personal => system_desktop_dir()?,
             "system" => bail!(
-                "Profil '{}' verwendet den gemeinsamen Claude-Ordner. Stelle desktop_storage im CLI auf isolated, damit beide Konten getrennt bleiben.",
-                id.name()
+                "Arbeit muss einen getrennten Desktop-Ordner verwenden. Stelle desktop_storage für work im CLI auf isolated."
             ),
             custom => {
                 let path = PathBuf::from(custom);
@@ -284,5 +344,77 @@ mod tests {
         assert_eq!(session.profile, ProfileId::Work);
         assert_eq!(session.reopen, vec!["personal"]);
         assert!(recovered.initialized.is_empty());
+    }
+
+    #[test]
+    fn adopts_existing_personal_without_copying_or_deleting_profile_data() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join("switch");
+        let existing = temp.path().join("existing Claude");
+        fs::create_dir_all(&existing).unwrap();
+        fs::write(existing.join("config.json"), "original settings").unwrap();
+        fs::write(existing.join("chat-marker"), "existing chats").unwrap();
+        ensure_profiles(&home).unwrap();
+        let new_profile = home.join("profiles/personal/desktop");
+        fs::create_dir_all(&new_profile).unwrap();
+        fs::write(new_profile.join("chat-marker"), "new chats").unwrap();
+        let before = fs::read_to_string(home.join("config.toml")).unwrap();
+        adopt_personal(&home, &existing).unwrap();
+        let doc = fs::read_to_string(home.join("config.toml"))
+            .unwrap()
+            .parse::<DocumentMut>()
+            .unwrap();
+        assert_eq!(
+            doc["profiles"]["personal"]["desktop_storage"].as_str(),
+            Some("system")
+        );
+        assert_eq!(
+            doc["profiles"]["personal"]["code_storage"].as_str(),
+            Some("system")
+        );
+        assert_eq!(
+            doc["profiles"]["work"]["desktop_storage"].as_str(),
+            Some("isolated")
+        );
+        assert_eq!(
+            fs::read_to_string(existing.join("chat-marker")).unwrap(),
+            "existing chats"
+        );
+        assert_eq!(
+            fs::read_to_string(existing.join("config.json")).unwrap(),
+            "original settings"
+        );
+        assert_eq!(
+            fs::read_to_string(new_profile.join("chat-marker")).unwrap(),
+            "new chats"
+        );
+        assert_eq!(
+            fs::read_to_string(home.join("config.toml.before-existing-personal")).unwrap(),
+            before
+        );
+        assert!(uses_existing_personal(&home).unwrap());
+        ensure_profiles(&home).unwrap();
+    }
+
+    #[test]
+    fn missing_existing_profile_leaves_switch_config_untouched() {
+        let temp = tempfile::tempdir().unwrap();
+        assert!(adopt_personal(temp.path(), &temp.path().join("absent")).is_err());
+        assert!(!temp.path().join("config.toml").exists());
+    }
+
+    #[test]
+    fn refuses_to_assign_system_storage_already_used_by_another_profile() {
+        let temp = tempfile::tempdir().unwrap();
+        let existing = temp.path().join("old");
+        fs::create_dir_all(&existing).unwrap();
+        fs::write(existing.join("config.json"), "{}").unwrap();
+        ensure_profiles(temp.path()).unwrap();
+        let path = temp.path().join("config.toml");
+        let raw = fs::read_to_string(&path).unwrap()
+            + "\n[profiles.client]\ndesktop_storage = 'system'\n";
+        fs::write(&path, &raw).unwrap();
+        assert!(adopt_personal(temp.path(), &existing).is_err());
+        assert_eq!(fs::read_to_string(path).unwrap(), raw);
     }
 }

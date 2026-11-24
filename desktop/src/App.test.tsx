@@ -82,4 +82,18 @@ describe('Desktop launcher', () => {
     expect(await screen.findByText('Installiere zuerst Claude Desktop in deinem Programme-Ordner.')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Claude Arbeit öffnen' })).toBeDisabled();
   });
+
+  it('adopts an existing personal profile only after confirmation', async () => {
+    call.mockResolvedValue({ ...ready, can_adopt_personal: true });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Bisheriges Privatprofil verwenden' }));
+    expect(screen.getByRole('dialog')).toBeVisible();
+    expect(call).not.toHaveBeenCalledWith('adopt_personal', expect.anything());
+    call.mockResolvedValue({ ...ready, can_adopt_personal: false });
+    await user.click(screen.getByRole('button', { name: 'Bisheriges Profil verwenden' }));
+    expect(call).toHaveBeenCalledWith('adopt_personal', {});
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('Dein bisheriges Claude ist jetzt mit „Privat“ verbunden.')).toBeVisible();
+  });
 });

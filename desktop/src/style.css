@@ -50,6 +50,7 @@ h1 { font-family: ui-serif, Georgia, serif; font-size: 34px; line-height: 1.15; 
 .error { color: var(--error); overflow-wrap: anywhere; }
 .error::before { content: "! "; font-weight: 700; }
 .text-button { min-height: 44px; padding: 4px 0; border: 0; background: transparent; color: inherit; text-decoration: underline; }
+.adopt-button { display: block; margin: 4px auto -8px; font-size: 11px; color: var(--muted); }
 footer { display: flex; align-items: center; justify-content: center; gap: 7px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.5; color: var(--muted); }
 dialog { max-width: 480px; width: calc(100% - 40px); max-height: calc(100dvh - 40px); overflow-y: auto; margin: auto; padding: 0; border: 1px solid var(--line); border-radius: 16px; color: var(--ink); background: var(--surface); box-shadow: 0 16px 48px rgb(0 0 0 / 14%); }
 dialog::backdrop { background: rgb(25 28 23 / 30%); }

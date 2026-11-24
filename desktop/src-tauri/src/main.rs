@@ -35,6 +35,7 @@ struct AppStatus {
     installed: bool,
     profiles: Vec<ProfileStatus>,
     login: Option<ProfileId>,
+    can_adopt_personal: bool,
 }
 
 #[derive(Serialize)]
@@ -114,7 +115,32 @@ impl Backend {
                 })
                 .collect(),
             login: state.login.map(|session| session.profile),
+            can_adopt_personal: profiles::system_desktop_dir()?
+                .join("config.json")
+                .is_file()
+                && !profiles::uses_existing_personal(&self.home)?,
         })
+    }
+
+    fn adopt_personal(&self) -> Result<AppStatus> {
+        let mut state = profiles::load_state(&self.home)?;
+        if state.login.is_some() {
+            bail!("Schließe zuerst die laufende Anmeldung ab oder brich sie ab.");
+        }
+        if self
+            .cli_status()?
+            .profiles
+            .iter()
+            .any(|p| p.name == "personal" && p.desktop.running)
+        {
+            bail!(
+                "Beende zuerst das neu angelegte private Claude-Fenster vollständig mit Cmd+Q. Dein bisheriges Claude bleibt erhalten."
+            );
+        }
+        profiles::adopt_personal(&self.home, &profiles::system_desktop_dir()?)?;
+        state.initialized.insert("personal".into());
+        profiles::save_state(&self.home, &state)?;
+        self.status()
     }
 
     fn open(&self, profile: ProfileId) -> Result<AppStatus> {
@@ -200,13 +226,19 @@ async fn finish_login(app: tauri::AppHandle, completed: bool) -> Result<AppStatu
     run_command(app, move |backend| backend.finish_login(completed)).await
 }
 
+#[tauri::command]
+async fn adopt_personal(app: tauri::AppHandle) -> Result<AppStatus, String> {
+    run_command(app, |backend| backend.adopt_personal()).await
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             app_status,
             open_profile,
             begin_login,
-            finish_login
+            finish_login,
+            adopt_personal
         ])
         .run(tauri::generate_context!())
         .expect("Claude Switch konnte nicht gestartet werden");
